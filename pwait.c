@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <sys/capability.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -11,8 +12,10 @@
 #define TRUE 1
 #define FALSE 0
 
-/* When the tracee exits, waitpid returns a status
- *  (PTRACE_EVENT_EXIT << 16) | (SIGTRAP << 8) | tracee_exit_code
+/* When the tracee is about to exit, waitpid returns a status
+ *  (PTRACE_EVENT_EXIT << 16) | (SIGTRAP << 8) | 0x7f
+ * and waitid sets a si_status of
+ *  (PTRACE_EVENT_EXIT << 8) | SIGTRAP
  * so checking for this value above is how we know we are seeing
  * the process exit, and not just a random signal
  */
@@ -34,6 +37,20 @@ void dprint(const char* format, ...) {
 
 void usage(const char* name) {
     fprintf(stderr, "Usage: %s pid\n", name);
+}
+
+/**
+ * Get the exit status of the traced process, once we know it has exited
+ */
+int get_tracee_exit_status() {
+    unsigned long tracee_exit_status;
+    if (ptrace(PTRACE_GETEVENTMSG, pid, NULL, &tracee_exit_status) == -1) {
+        dprint("Error getting process %d exit status", pid);
+        return -1;
+    }
+    else {
+        return (int)tracee_exit_status;
+    }
 }
 
 int cap_free_safe(cap_t* p_capabilities) {
@@ -151,54 +168,131 @@ int prepare_capabilities(void) {
 int wait_using_waitpid() {
     pid_t returned_pid;
     int waitpid_return_status;
+    int tracee_exit_code;
 
     do {
         returned_pid = waitpid(pid, &waitpid_return_status, 0);
+        /* There are several situations we could be in at this point: */
+
+        /* waitpid() encountered some unknown error, in which case we should
+         * break out of the loop and abort the program to avoid screwing
+         * anything up
+         */
         if (returned_pid == -1) {
             dprint("Error waiting for process %d", pid);
-            return FALSE;
+            return -1;
         }
         if (returned_pid != pid) {
             dprint("waitpid returned wrong process ID %d (expected %d)", returned_pid, pid);
-            return FALSE;
+            return -1;
         }
+
         dprint("return status %x", waitpid_return_status);
-    } while (!(WIFSTOPPED(waitpid_return_status) && (waitpid_return_status >> 8 == PTRACE_EXIT_SIGINFO_STATUS)));
-    return TRUE;
+
+        /* The tracee process is exiting, in which case waitpid() will yield
+         * the magic combination PTRACE_EXIT_SIGINFO_STATUS. In this case,
+         * break out of the loop and return.
+         */
+        if (WIFSTOPPED(waitpid_return_status) && (waitpid_return_status >> 8 == PTRACE_EXIT_SIGINFO_STATUS)) {
+            return get_tracee_exit_status(pid);
+        }
+
+        /* The tracee has somehow exited without this process (the tracer)
+         * being notified with a SIGTRAP. This shouldn't happen, but it is easy
+         * to recover from.
+         */
+        else if (WIFEXITED(waitpid_return_status)) {
+            return WEXITSTATUS(waitpid_return_status);
+        }
+
+        /* The tracee has been terminated by a signal. This shouldn't happen
+         * unless the signal is SIGKILL, because if the tracee receives SIGTERM
+         * or SIGINT or so on, that should be translated into the SIGTRAP that
+         * indicates the tracee is about to exit. And the case above where
+         * waitpid_return_status >> 8 == PTRACE_EXIT_SIGINFO_STATUS should
+         * be invoked instead of this.
+         */
+        else if (WIFSIGNALED(waitpid_return_status)) {
+            /* Processes terminated by a signal don't really have an exit code,
+             * but there is a common convention to return 128+SIGNUM, which I
+             * do here.
+             */
+            return 128 + WTERMSIG(waitpid_return_status);
+        }
+
+        /* The tracee has received a signal other than the SIGTRAP which
+         * indicates that it is about to exit. In this case, we should
+         * reinject the signal and wait again.
+         */
+        else if (WIFSTOPPED(waitpid_return_status)) {
+            ptrace(PTRACE_CONT, pid, NULL, WSTOPSIG(waitpid_return_status));
+        }
+    } while (TRUE);
+    return -1;
 }
 
 int wait_using_waitid() {
     siginfo_t siginfo;
 
     do {
-        siginfo.si_pid = 0;
+        siginfo.si_pid = 0; // not strictly necessary? see man waitid
+        /* If waitid() encountered some unknown error, break out of the loop
+         * and abort the program to avoid screwing anything up
+         */
         if (waitid(P_PID, pid, &siginfo, WEXITED) != 0) {
             dprint("failed to wait on process %d", pid);
-            return FALSE;
+            return -1;
         }
 
         if (siginfo.si_pid == 0) {
             dprint("failed to connect to process %d", pid);
-            return FALSE;
+            return -1;
         }
+
         dprint("siginfo status %x", siginfo.si_status);
-    } while (!(siginfo.si_code == CLD_TRAPPED && siginfo.si_status == PTRACE_EXIT_SIGINFO_STATUS));
-    return TRUE;
+
+        /* The tracee process is exiting, in which case waitid() will yield
+         * the magic combination PTRACE_EXIT_SIGINFO_STATUS. In this case,
+         * break out of the loop and return.
+         */
+        if (siginfo.si_code == CLD_TRAPPED && siginfo.si_status == PTRACE_EXIT_SIGINFO_STATUS) {
+            return get_tracee_exit_status(pid);
+        }
+
+        /* The tracee has somehow exited without this process (the tracer)
+         * being notified with a SIGTRAP. This shouldn't happen, but it is easy
+         * to recover from.
+         */
+        else if (siginfo.si_code == CLD_EXITED) {
+            return siginfo.si_status;
+        }
+
+        /* The tracee has been terminated by a signal. This shouldn't happen
+         * unless the signal is SIGKILL, because if the tracee receives SIGTERM
+         * or SIGINT or so on, that should be translated into the SIGTRAP that
+         * indicates the tracee is about to exit. And the case above where
+         * waitpid_return_status >> 8 == PTRACE_EXIT_SIGINFO_STATUS should
+         * be invoked instead of this.
+         */
+        else if (siginfo.si_code == CLD_KILLED || siginfo.si_code == CLD_DUMPED) {
+            /* Processes terminated by a signal don't really have an exit code,
+             * but there is a common convention to return 128+SIGNUM, which I
+             * do here.
+             */
+            return 128 + siginfo.si_status;
+        }
+
+        /* The tracee has received a signal other than the SIGTRAP which
+         * indicates that it is about to exit. In this case, we should
+         * reinject the signal and wait again.
+         */
+        else if (siginfo.si_code == CLD_TRAPPED) {
+            ptrace(PTRACE_CONT, pid, NULL, siginfo.si_status);
+        }
+    } while (TRUE);
+    return -1;
 }
 
-/**
- * Get the exit status of the traced process, once we know it has exited
- */
-int get_tracee_exit_status() {
-    unsigned long tracee_exit_status;
-    if (ptrace(PTRACE_GETEVENTMSG, pid, NULL, &tracee_exit_status) == -1) {
-        dprint("Error getting process %d exit status", pid);
-        return -1;
-    }
-    else {
-        return (int)tracee_exit_status;
-    }
-}
 
 void detach(const int signal) {
     ptrace(PTRACE_DETACH, pid, 0, 0);
@@ -207,7 +301,7 @@ void detach(const int signal) {
 int main(const int argc, const char** argv) {
     char* endptr;
     long ptrace_return;
-    int tracee_exit_code;
+    int wait_return;
     struct sigaction siga, oldsiga_term, oldsiga_int;
 
     if (argc < 2) {
@@ -248,7 +342,8 @@ int main(const int argc, const char** argv) {
         return 1;
     }
 
-    if (!wait_using_waitpid(pid)) {
+    wait_return = wait_using_waitpid(pid);
+    if (wait_return == -1) {
         // wait failed
         return 1;
     }
@@ -258,13 +353,6 @@ int main(const int argc, const char** argv) {
     sigaction(SIGTERM, &oldsiga_term, NULL);
     sigaction(SIGINT, &oldsiga_int, NULL);
 
-    // get the process's exit status
-    tracee_exit_code = get_tracee_exit_status(pid);
-    dprint("Got exit code");
-
-    if (tracee_exit_code == -1) {
-        return 1;
-    }
-    printf("Process %d exited with code %d\n", pid, tracee_exit_code);
+    printf("Process %d exited with status %d\n", pid, get_tracee_exit_status());
     return 0;
 }
