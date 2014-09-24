@@ -18,6 +18,11 @@
  */
 #define PTRACE_EXIT_SIGINFO_STATUS (SIGTRAP | (PTRACE_EVENT_EXIT << 8))
 
+/**
+ * The process ID being waited for
+ */
+static pid_t pid;
+
 void dprint(const char* format, ...) {
     char message[1024];
     va_list args;
@@ -142,7 +147,7 @@ int prepare_capabilities(void) {
 #endif
 }
 
-int wait_using_waitpid(const pid_t pid) {
+int wait_using_waitpid() {
     pid_t returned_pid;
     int waitpid_return_status;
 
@@ -161,7 +166,7 @@ int wait_using_waitpid(const pid_t pid) {
     return TRUE;
 }
 
-int wait_using_waitid(const pid_t pid) {
+int wait_using_waitid() {
     siginfo_t siginfo;
 
     do {
@@ -183,7 +188,7 @@ int wait_using_waitid(const pid_t pid) {
 /**
  * Get the exit status of the traced process, once we know it has exited
  */
-int get_tracee_exit_status(pid_t pid) {
+int get_tracee_exit_status() {
     unsigned long tracee_exit_status;
     if (ptrace(PTRACE_GETEVENTMSG, pid, NULL, &tracee_exit_status) == -1) {
         dprint("Error getting process %d exit status", pid);
@@ -194,11 +199,15 @@ int get_tracee_exit_status(pid_t pid) {
     }
 }
 
+void detach(const int signal) {
+    ptrace(PTRACE_DETACH, pid, 0, 0);
+}
+
 int main(const int argc, const char** argv) {
-    pid_t pid;
     char* endptr;
     long ptrace_return;
     int tracee_exit_code;
+    struct sigaction siga, oldsiga_term, oldsiga_int;
 
     if (argc < 2) {
         usage(argv[0]);
@@ -219,8 +228,12 @@ int main(const int argc, const char** argv) {
         return 1;
     }
 
-    // TODO trap sigint and sigterm, detach, return 127
-//     ptrace(PTRACE_DETACH, pid, 0, 0);
+    /* Set up a signal handler so that if the program receives a SIGINT (Ctrl+C)
+     * or SIGTERM, it will detach from the tracee
+     */
+    siga.sa_handler = detach;
+    sigaction(SIGTERM, &siga, &oldsiga_term);
+    sigaction(SIGINT, &siga, &oldsiga_int);
 
     dprint("Attempting to set ptrace on process %d", pid);
 #ifdef PTRACE_SEIZE
@@ -240,9 +253,14 @@ int main(const int argc, const char** argv) {
     }
     dprint("Wait successful");
 
+    // Reset the signal handler (hopefully TERM or INT doesn't come right here)
+    sigaction(SIGTERM, &oldsiga_term, NULL);
+    sigaction(SIGINT, &oldsiga_int, NULL);
+
     // get the process's exit status
     tracee_exit_code = get_tracee_exit_status(pid);
     dprint("Got exit code");
+
     if (tracee_exit_code == -1) {
         return 1;
     }
