@@ -57,7 +57,8 @@ int cap_free_safe(cap_t* p_capabilities) {
  * 3. Check whether the process is allowed to give itself CAP_SYS_PTRACE, and
  *    if not, return FALSE
  * 4. Attempt to actually set CAP_SYS_PTRACE
- * 5. Check again to make sure the process has CAP_SYS_PTRACE
+ * 5. Check again to make sure the process has CAP_SYS_PTRACE, and return TRUE
+ *    or FALSE to indicate whether it has it
  */
 int prepare_capabilities(void) {
     cap_t capabilities;
