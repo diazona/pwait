@@ -231,6 +231,9 @@ int wait_using_waitpid() {
     return -1;
 }
 
+#if _SVID_SOURCE || _XOPEN_SOURCE >= 500 || _XOPEN_SOURCE \
+  && _XOPEN_SOURCE_EXTENDED || _POSIX_C_SOURCE >= 200809L
+# define HAVE_WAITID
 int wait_using_waitid() {
     siginfo_t siginfo;
 
@@ -292,7 +295,7 @@ int wait_using_waitid() {
     } while (TRUE);
     return -1;
 }
-
+#endif
 
 void detach(const int signal) {
     ptrace(PTRACE_DETACH, pid, 0, 0);
@@ -342,7 +345,11 @@ int main(const int argc, const char** argv) {
         return 1;
     }
 
+#ifdef HAVE_WAITID
+    wait_return = wait_using_waitid(pid);
+#else
     wait_return = wait_using_waitpid(pid);
+#endif
     if (wait_return == -1) {
         // wait failed
         return 1;
