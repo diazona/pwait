@@ -1,6 +1,4 @@
-#include <assert.h>
 #include <sys/capability.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/ptrace.h>
 #include <signal.h>
