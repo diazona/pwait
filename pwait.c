@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE
+#endif
+
 #include <sys/capability.h>
 #include <sys/wait.h>
 #include <sys/ptrace.h>
@@ -7,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <syslog.h>
+#include <getopt.h>
 
 #define TRUE 1
 #define FALSE 0
@@ -227,8 +232,10 @@ int wait_using_waitpid() {
     return -1;
 }
 
-#if _SVID_SOURCE || _XOPEN_SOURCE >= 500 || _XOPEN_SOURCE \
-  && _XOPEN_SOURCE_EXTENDED || _POSIX_C_SOURCE >= 200809L
+#if defined(_SVID_SOURCE) \
+ || _XOPEN_SOURCE >= 500 \
+ || defined(_XOPEN_SOURCE) && defined(_XOPEN_SOURCE_EXTENDED) \
+ || _POSIX_C_SOURCE >= 200809L
 # define HAVE_WAITID
 int wait_using_waitid() {
     siginfo_t siginfo;
@@ -302,23 +309,54 @@ void detach(const int signal) {
     ptrace(PTRACE_DETACH, pid, 0, 0);
 }
 
-int main(const int argc, const char** argv) {
+static const char* options = "v";
+#ifdef _GNU_SOURCE
+static struct option long_options[] = {
+    {"verbose", no_argument, NULL, 'v'},
+    {0, 0, 0, 0}
+};
+#endif
+
+int main(const int argc, char* const* argv) {
+    char* pidarg;
     char* endptr;
     long ptrace_return;
     int wait_return;
     struct sigaction siga, oldsiga_term, oldsiga_int;
 
-    if (argc < 2) {
+    int verbose = 0;
+    int c;
+
+// some trickery to be able to use either getopt_long, if it's available, or getopt, if not
+#ifdef _GNU_SOURCE
+    int option_index;
+    while ((c = getopt_long(argc, argv, options, long_options, &option_index)) != -1) {
+#elif _POSIX_C_SOURCE >= 2 || defined(_XOPEN_SOURCE)
+    while ((c = getopt(argc, argv, options)) != -1) {
+#else
+    while (FALSE) {
+#endif
+        switch (c) {
+            case 'v':
+                verbose = 1;
+                break;
+        }
+    }
+
+    if (optind >= argc) {
         usage(argv[0]);
         return 2;
     }
+    pidarg = argv[optind];
+
+    openlog("pwait", verbose > 0 ? LOG_PERROR : LOG_CONS, LOG_USER);
 
     if (!prepare_capabilities()) {
         return 1;
     }
 
-    pid = strtol(argv[1], &endptr, 0);
-    if (argv[1] == endptr) {
+    pid = strtol(pidarg, &endptr, 0);
+    if (pidarg == endptr) {
         fprintf(stderr, "First argument must be a numeric PID\n");
         return 2;
     }
@@ -362,6 +400,8 @@ int main(const int argc, const char** argv) {
     sigaction(SIGTERM, &oldsiga_term, NULL);
     sigaction(SIGINT, &oldsiga_int, NULL);
 
-    syslog(LOG_INFO, "Process %d exited with status %d\n", pid, get_tracee_exit_status());
+    syslog(LOG_INFO, "Process %d exited with status %d", pid, get_tracee_exit_status());
+
+    closelog();
     return 0;
 }
