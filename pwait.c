@@ -373,7 +373,7 @@ int main(const int argc, char* const* argv) {
     sigaction(SIGTERM, &siga, &oldsiga_term);
     sigaction(SIGINT, &siga, &oldsiga_int);
 
-    syslog(LOG_DEBUG, "Attempting to set ptrace on process %d (silence indicates it worked)", pid);
+    syslog(LOG_DEBUG, "Attempting to set ptrace on process %d", pid);
 #ifdef PTRACE_SEIZE
     // valid since Linux kernel 3.4
     ptrace_return = ptrace(PTRACE_SEIZE, pid, NULL, PTRACE_O_TRACEEXIT);
@@ -384,6 +384,7 @@ int main(const int argc, char* const* argv) {
         syslog(LOG_CRIT, "Error setting ptrace on process %d", pid);
         return 1;
     }
+    syslog(LOG_DEBUG, "Successfully set ptrace on process %d", pid);
 
 #ifdef HAVE_WAITID
     wait_return = wait_using_waitid(pid);
