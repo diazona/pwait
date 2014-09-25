@@ -1,0 +1,4 @@
+// Cmake will enable or disable these definitions depending on what features
+// are available when compiling
+
+#cmakedefine _GNU_SOURCE
