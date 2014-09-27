@@ -1,6 +1,21 @@
+STOP: you probably want to use something like this
+
+    easy_pwait() {
+        while [ -d /proc/$1 ]; do sleep 5; done
+    }
+
+instead, unless you need to get the process's exit code.
+
+---
+
 pwait is a small utility to wait for a process to finish. It works much like
 the `wait` command built in to bash and other shells, but it can wait for
 processes that aren't children of the terminal you run it in.
+
+One advantage of pwait over alternatives (like the shell function above) is
+that it can give you the exit code of the process you use it on, which is
+useful when you need to know whether a command in another terminal completed
+successfully.
 
 pwait uses the ptrace system call, which means there are some prerequisites
 for you to use it:

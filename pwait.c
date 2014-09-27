@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sysexits.h>
 #include <syslog.h>
 #include <getopt.h>
 
@@ -41,7 +42,9 @@ int get_tracee_exit_status() {
         return -1;
     }
     else {
-        return (int)tracee_exit_status;
+        // unless I'm missing something the man page neglects to mention
+        // that PTRACE_GETEVENTMSG gives (status << 8), but it does
+        return (int)(tracee_exit_status >> 8);
     }
 }
 
@@ -342,25 +345,30 @@ int main(const int argc, char* const* argv) {
 
     if (optind >= argc) {
         usage(argv[0]);
-        return 2;
+        return EX_USAGE;
     }
     pidarg = argv[optind];
 
     openlog("pwait", verbose > 0 ? LOG_PERROR : LOG_CONS, LOG_USER);
 
     if (!prepare_capabilities()) {
-        return 1;
+        return EX_SOFTWARE;
     }
 
     pid = strtol(pidarg, &endptr, 0);
     if (pidarg == endptr) {
-        fprintf(stderr, "First argument must be a numeric PID\n");
-        return 2;
+        syslog(LOG_CRIT, "First non-option argument \"%s\" must be a numeric PID", argv[optind]);
+        if (!verbose) {
+            fprintf(stderr, "First non-option argument \"%s\" must be a numeric PID", argv[optind]);
+        }
+        return EX_USAGE;
     }
     if (pid < 1) {
         syslog(LOG_CRIT, "Invalid process ID %d passed as first argument", pid);
-        fprintf(stderr, "Invalid process ID %d passed as first argument", pid);
-        return 1;
+        if (!verbose) {
+            fprintf(stderr, "Invalid process ID %d passed as first argument", pid);
+        }
+        return EX_NOINPUT;
     }
 
     /* Set up a signal handler so that if the program receives a SIGINT (Ctrl+C)
@@ -379,7 +387,7 @@ int main(const int argc, char* const* argv) {
 #endif
     if (ptrace_return == -1) {
         syslog(LOG_CRIT, "Error setting ptrace on process %d", pid);
-        return 1;
+        return EX_OSERR;
     }
     syslog(LOG_DEBUG, "Successfully set ptrace on process %d", pid);
 
@@ -390,7 +398,7 @@ int main(const int argc, char* const* argv) {
 #endif
     if (wait_return == -1) {
         // wait failed
-        return 1;
+        return EX_OSERR;
     }
     syslog(LOG_DEBUG, "Wait on process %d successful", pid);
 
@@ -401,5 +409,5 @@ int main(const int argc, char* const* argv) {
     syslog(LOG_INFO, "Process %d exited with status %d", pid, get_tracee_exit_status());
 
     closelog();
-    return 0;
+    return wait_return;
 }
