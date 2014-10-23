@@ -17,6 +17,10 @@ that it can give you the exit code of the process you use it on, which is
 useful when you need to know whether a command in another terminal completed
 successfully.
 
+Of course, pwait returns its own error codes to indicate whether something goes
+wrong. To tell whether a nonzero exit code came from pwait itself or the
+program being waited for, look at the log output.
+
 pwait uses the ptrace system call, which means there are some prerequisites
 for you to use it:
 
