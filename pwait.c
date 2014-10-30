@@ -10,6 +10,7 @@
 #include <sysexits.h>
 #include <syslog.h>
 #include <getopt.h>
+#include <unistd.h>
 
 #define TRUE 1
 #define FALSE 0
@@ -48,117 +49,111 @@ int get_tracee_exit_status() {
     }
 }
 
-int cap_free_safe(cap_t* p_capabilities) {
-    int status = cap_free(*p_capabilities);
+int cap_free_safe(void* p_capabilities) {
+    int status = cap_free(p_capabilities);
     if (status == -1) {
-        syslog(LOG_DEBUG, "freeing capability struct failed");
+        syslog(LOG_DEBUG, "cap_free failed");
     }
     return status;
 }
 
 /**
- * Make a best effort to ensure that the process has the CAP_SYS_PTRACE
- * capability. If it already did, or if this function was able to set the
- * capability, this returns 1 (TRUE). Otherwise, this returns 0 (FALSE).
+ * Make a best effort to ensure that the process has a certain set of
+ * capabilities. If it already does, or if this function was able to set all
+ * of the requested capabilities, this returns 1 (TRUE). Otherwise, this
+ * returns 0 (FALSE).
  *
  * The function is a bit long because it checks for error codes at every step,
- * but conceptually what it does is very straightforward:
- * 1. Check whether the CAP_SYS_PTRACE capability is supported by the kernel
- * 2. Check whether the process already has CAP_SYS_PTRACE set, and if so,
+ * but conceptually what it does for each requested capability is very
+ * straightforward:
+ * 1. Check whether the capability is supported by the kernel
+ * 2. Check whether the process already has the capability set, and if so,
  *    return TRUE
- * 3. Check whether the process is allowed to give itself CAP_SYS_PTRACE, and
+ * 3. Check whether the process is allowed to give itself the capability, and
  *    if not, return FALSE
- * 4. Attempt to actually set CAP_SYS_PTRACE
- * 5. Check again to make sure the process has CAP_SYS_PTRACE, and return TRUE
- *    or FALSE to indicate whether it has it
+ * 4. Attempt to actually set the capability
+ * 5. Check again to make sure the process has the capability, and return
+ *    FALSE if not
  */
-int prepare_capabilities(void) {
+int acquire_capabilities(size_t n, const cap_value_t* capabilities_to_acquire) {
+    int cap_acquire_was_successful = FALSE;
     cap_t capabilities;
-    cap_value_t capability_to_add[1];
-    cap_flag_value_t cap_sys_ptrace_status;
+    cap_flag_value_t cap_status;
+    size_t i;
+    char* capability_spec = NULL;
 
-#ifndef CAP_SYS_PTRACE
-    syslog(LOG_CRIT, "ptrace capability is not defined");
-    return FALSE;
-#else
-    if (!CAP_IS_SUPPORTED(CAP_SYS_PTRACE)) {
-        syslog(LOG_CRIT, "ptrace capability is not supported");
-        return FALSE;
-    }
-
-    capability_to_add[0] = CAP_SYS_PTRACE;
-
-    // check whether this process already has CAP_SYS_PTRACE set
     capabilities = cap_get_proc();
     if (capabilities == NULL) {
         syslog(LOG_CRIT, "getting capabilities of this process failed");
         return FALSE;
     }
 
-    if (cap_get_flag(capabilities, CAP_SYS_PTRACE, CAP_EFFECTIVE, &cap_sys_ptrace_status) == -1) {
-        syslog(LOG_CRIT, "checking effective capabilities failed");
-        cap_free_safe(&capabilities);
-        return FALSE;
-    }
+    capability_spec = cap_to_text(capabilities, NULL);
+    syslog(LOG_DEBUG, "process capabilities: %s", capability_spec);
+    cap_free_safe(capability_spec);
 
-    if (cap_sys_ptrace_status == CAP_SET) {
-        syslog(LOG_DEBUG, "process has CAP_SYS_PTRACE");
-        return TRUE;
-    }
-    else {
-        syslog(LOG_DEBUG, "process does not have CAP_SYS_PTRACE");
-    }
-
-    // see if we can set CAP_SYS_PTRACE
-    if (cap_get_flag(capabilities, CAP_SYS_PTRACE, CAP_PERMITTED, &cap_sys_ptrace_status) == -1) {
-        syslog(LOG_CRIT, "checking permitted capabilities failed");
-        cap_free_safe(&capabilities);
-        return FALSE;
-    }
-
-    if (cap_sys_ptrace_status == CAP_SET) {
-        syslog(LOG_DEBUG, "process is permitted to acquire CAP_SYS_PTRACE");
-    }
-    else {
-        syslog(LOG_CRIT, "process is not permitted to acquire CAP_SYS_PTRACE");
-        return FALSE;
-    }
-
-    // actually set CAP_SYS_PTRACE
-    if (cap_set_flag(capabilities, CAP_EFFECTIVE, 1, capability_to_add, CAP_SET) == -1) {
+    // first try setting the capabilities
+    if (cap_set_flag(capabilities, CAP_EFFECTIVE, n, capabilities_to_acquire, CAP_SET) == -1) {
+        // this generally shouldn't happen
         syslog(LOG_CRIT, "modifying capability structure failed");
         cap_free_safe(&capabilities);
         return FALSE;
     }
 
-    if (cap_set_proc(capabilities) == -1) {
-        syslog(LOG_CRIT, "setting capability failed");
-        cap_free_safe(&capabilities);
-        return FALSE;
+    if (cap_set_proc(capabilities) == 0) {
+        // everything should be okay at this point
+        syslog(LOG_DEBUG, "setting process capabilities succeeded");
+        cap_acquire_was_successful = TRUE;
+        // but let's be a little paranoid and check whether this process
+        // _actually_ has the capabilities set
+        cap_free_safe(capabilities);
+        capabilities = cap_get_proc();
+        for (i = 0; i < n; i++) {
+            if (cap_get_flag(capabilities, capabilities_to_acquire[i], CAP_EFFECTIVE, &cap_status) == -1) {
+                syslog(LOG_CRIT, "checking effective capabilities failed");
+                cap_free_safe(&capabilities);
+                return FALSE;
+            }
+            if (cap_status != CAP_SET) {
+                capability_spec = cap_to_name(capabilities_to_acquire[i]);
+                syslog(LOG_CRIT, "process did not acquire %s", capability_spec);
+                cap_free_safe(capability_spec);
+                cap_acquire_was_successful = FALSE;
+            }
+        }
+        return cap_acquire_was_successful;
     }
 
-    // check whether the process now has CAP_SYS_PTRACE set
-    if (cap_get_flag(capabilities, CAP_SYS_PTRACE, CAP_EFFECTIVE, &cap_sys_ptrace_status) == -1) {
-        syslog(LOG_CRIT, "checking effective capabilities failed");
-        cap_free_safe(&capabilities);
-        return FALSE;
+    // setting capabilities failed
+    cap_acquire_was_successful = FALSE;
+    syslog(LOG_CRIT, "setting process capabilities failed");
+
+    // let's find out why
+    for (i = 0; i < n; i++) {
+        // check if the capability was supported at all
+        if (!CAP_IS_SUPPORTED(capabilities_to_acquire[i])) {
+            capability_spec = cap_to_name(capabilities_to_acquire[i]);
+            syslog(LOG_CRIT, "capability %s is not supported", capability_spec);
+            cap_free_safe(capability_spec);
+            continue;
+        }
+        // check if it's permitted to set the capability
+        if (cap_get_flag(capabilities, capabilities_to_acquire[i], CAP_PERMITTED, &cap_status) == -1) {
+            syslog(LOG_CRIT, "checking permitted capabilities failed");
+            continue;
+        }
+        capability_spec = cap_to_name(capabilities_to_acquire[i]);
+        if (cap_status == CAP_SET) {
+            syslog(LOG_DEBUG, "process is permitted to acquire %s", capability_spec);
+        }
+        else {
+            syslog(LOG_CRIT, "process is not permitted to acquire %s", capability_spec);
+        }
+        cap_free(capability_spec);
     }
 
-    if (cap_sys_ptrace_status == CAP_SET) {
-        syslog(LOG_DEBUG, "process has CAP_SYS_PTRACE");
-    }
-    else {
-        // log at critical level because this shouldn't happen
-        syslog(LOG_CRIT, "process does not have CAP_SYS_PTRACE");
-    }
-
-    // free the memory
-    if (cap_free_safe(&capabilities) == -1) {
-        return FALSE;
-    }
-
-    return cap_sys_ptrace_status == CAP_SET;
-#endif
+    cap_free_safe(&capabilities);
+    return cap_acquire_was_successful;
 }
 
 int wait_using_waitpid() {
@@ -323,6 +318,7 @@ int main(const int argc, char* const* argv) {
     long ptrace_return;
     int wait_return;
     struct sigaction siga, oldsiga_term, oldsiga_int;
+    cap_value_t capability_to_acquire[1];
 
     int verbose = 0;
     int c;
@@ -351,8 +347,16 @@ int main(const int argc, char* const* argv) {
 
     openlog("pwait", verbose > 0 ? LOG_PERROR : LOG_CONS, LOG_USER);
 
-    if (!prepare_capabilities()) {
+    if (geteuid() != 0) {
+#if defined(CAP_SYS_PTRACE)
+        capability_to_acquire[0] = CAP_SYS_PTRACE;
+#else
+        syslog(LOG_CRIT, "capability system not available");
         return EX_SOFTWARE;
+#endif
+        if (!acquire_capabilities(1, capability_to_acquire)) {
+            return EX_SOFTWARE;
+        }
     }
 
     pid = strtol(pidarg, &endptr, 0);
