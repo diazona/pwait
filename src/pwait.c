@@ -42,8 +42,10 @@ static void help(const char* name) {
 #endif
     printf("\n");
 #if defined(HAVE_GETOPT_LONG)
+    printf("  -d, --delay=SECONDS  set the polling frequency when --method=poll\n");
     printf("  -h, --help           print this help message and exit\n");
-    printf("  -m, --method=METHOD  use METHOD to wait for the process, either ptrace or netlink\n");
+    printf("  -m, --method=METHOD  use METHOD to wait for the process\n");
+    printf("                       METHOD is one of 'netlink' (default), 'ptrace', or 'poll'\n");
     printf("  -v, --verbose        print diagnostic output to stderr\n");
 #else
     printf("  -h    print this help message and exit\n");
@@ -52,10 +54,11 @@ static void help(const char* name) {
 #endif
 }
 
-static const char* options = "hm:v";
+static const char* options = "d:hm:v";
 #ifdef HAVE_GETOPT_LONG
 static struct option long_options[] = {
     {"help", no_argument, NULL, 'h'},
+    {"delay", required_argument, NULL, 'd'},
     {"method", required_argument, NULL, 'm'},
     {"verbose", no_argument, NULL, 'v'},
     {0, 0, 0, 0}
@@ -82,6 +85,9 @@ int main(const int argc, char* const* argv) {
     while (FALSE) {
 #endif
         switch (c) {
+            case 'd':
+                set_delay(strtoul(optarg, NULL, 0));
+                break;
             case 'h':
                 help(argv[0]);
                 return EX_OK;
@@ -91,6 +97,9 @@ int main(const int argc, char* const* argv) {
                 }
                 else if (strncmp(optarg, "netlink", 8) == 0) {
                     wait_function = wait_using_netlink;
+                }
+                else if (strncmp(optarg, "poll", 5) == 0) {
+                    wait_function = wait_using_polling;
                 }
                 else {
                     wait_function = NULL;
@@ -111,7 +120,7 @@ int main(const int argc, char* const* argv) {
     openlog("pwait", verbose > 0 ? LOG_PERROR : LOG_CONS, LOG_USER);
 
     if (wait_function == NULL) {
-        fprintf(stderr, "Invalid method (use \"ptrace\" or \"netlink\")");
+        fprintf(stderr, "Invalid method (use \"netlink\", \"ptrace\", or \"poll\")");
         return EX_USAGE;
     }
 
