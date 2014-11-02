@@ -1,16 +1,21 @@
 STOP: Instead you probably want to use something like this
 
-    easy_pwait() {
+    pwait_poll() {
         while ps -p $1 >/dev/null; do sleep 5; done
     }
 
-or a more portable version which can only check processes owned by the running user
+or a more portable version which can only check processes owned by the running
+user
 
-    easy_pwait() {
+    pwait_poll() {
         while kill -0 $1 2>/dev/null; do sleep 5; done
     }
 
 unless you need to get the process's exit code.
+
+For your convenience, pwait includes a shell script that provides this function.
+It's called `pwait_poll.sh`; just source it in your shell and then you can call
+`pwait_poll PID [DELAY]`.
 
 # What is pwait?
 
@@ -18,8 +23,8 @@ pwait is a small utility to wait for a process to finish. It works much like
 the `wait` command built in to bash and other shells, but it can wait for
 processes that aren't children of the terminal you run it in.
 
-One advantage of pwait over alternatives (like the shell function above) is
-that it can give you the exit code of the process you use it on, which is
+The advantage of pwait over the pwait_poll shell function above is that the
+full pwait can give you the exit code of the process you use it on, which is
 useful when you need to know whether a command in another terminal completed
 successfully.
 
@@ -41,7 +46,7 @@ caveats:
   OS's could be implemented, in principle.)
 - You have to have capability support enabled in the kernel and the capability
   manipulation shell utility `setcap` installed on the system (unless you run
-  pwait as root)
+  pwait as root or seteuid root)
 - It must be installed on a filesystem which supports extended attributes, so
   that you can add cap_sys_ptrace and/or cap_net_admin to the permitted
   capabilities list with setcap (again, unless you run it as root)
@@ -51,8 +56,9 @@ caveats:
   already being traced (such as one being run in a debugger). The netlink method
   doesn't suffer from these particular limitations, so it's the default.
 
-If this utility turns out to be useful, a future addition might be a
-polling mode which allows one to get around these difficulties.
+For completeness, pwait also implements a polling mode which does the same thing
+as the pwait_poll shell function. This mode cannot retrieve the exit code of the
+process, though, and it also won't catch the exact time at which the process ends.
 
 # Other pwaits
 
