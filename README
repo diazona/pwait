@@ -6,7 +6,7 @@ STOP: you probably want to use something like this
 
 instead, unless you need to get the process's exit code.
 
----
+# What is pwait?
 
 pwait is a small utility to wait for a process to finish. It works much like
 the `wait` command built in to bash and other shells, but it can wait for
@@ -37,3 +37,20 @@ for you to use it:
 
 If this utility turns out to be useful, a future addition might be a
 polling mode which allows one to get around these difficulties.
+
+# Other pwaits
+
+This idea is not original. I'm aware of two preexisting programs with the
+same intended functionality:
+
+- [FreeBSD pwait](https://github.com/freebsd/freebsd/tree/master/bin/pwait)
+  written by Jilles Tjoelker starting in 2004 as part of the FreeBSD project.
+  This uses FreeBSD's [kqueue](https://www.freebsd.org/cgi/man.cgi?kqueue)
+  mechanism, which doesn't exist in Linux, to register a listener for when
+  a process exits. The design philosophy is somewhat similar to the `ptrace`
+  technique used by this `pwait` (but `kqueue` is a much better system).
+- [William Ting's pwait](https://github.com/wting/pwait) is a shell script
+  that implements polling behavior using `ps`.
+
+My implementation of pwait is not based on either of the above, and was
+developed independently.
