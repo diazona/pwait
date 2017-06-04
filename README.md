@@ -54,3 +54,17 @@ same intended functionality:
 
 My implementation of pwait is not based on either of the above, and was
 developed independently.
+
+# Requirements
+
+Requires libcap:
+
+Debian: `apt-get install libcap-dev`
+
+# Build
+
+Uses cmake:
+
+```
+cmake . && make
+```
