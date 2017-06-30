@@ -57,9 +57,9 @@ developed independently.
 
 # Requirements
 
-Requires libcap:
+Requires `libcap`.
 
-Debian: `apt-get install libcap-dev`
+See the [wiki](https://github.com/diazona/pwait/wiki) for further information on requirements.
 
 # Build
 
