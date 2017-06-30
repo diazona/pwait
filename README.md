@@ -54,3 +54,17 @@ same intended functionality:
 
 My implementation of pwait is not based on either of the above, and was
 developed independently.
+
+# Requirements
+
+Requires `libcap`.
+
+See the [wiki](https://github.com/diazona/pwait/wiki) for further information on requirements.
+
+# Build
+
+Uses cmake:
+
+```
+cmake . && make
+```
