@@ -1,10 +1,16 @@
-STOP: you probably want to use something like this
+STOP: Instead you probably want to use something like this
 
     easy_pwait() {
-        while [ -d /proc/$1 ]; do sleep 5; done
+        while ps -p $1 >/dev/null; do sleep 5; done
     }
 
-instead, unless you need to get the process's exit code.
+or a more portable version which can only check processes owned by the running user
+
+    easy_pwait() {
+        while kill -0 $1 2>/dev/null; do sleep 5; done
+    }
+
+unless you need to get the process's exit code.
 
 # What is pwait?
 
