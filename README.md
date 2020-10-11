@@ -1,9 +1,8 @@
 STOP: Instead you probably want to use something like this
 
     easy_pwait() {
-            while ps -p $1 >/dev/null; do sleep 5; done
+        while ps -p $1 >/dev/null; do sleep 5; done
     }
-	
 or a more portable version which can only check processes owned by the running user
 
     easy_pwait() {
