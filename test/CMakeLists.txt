@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 add_test(
     NAME pwait-setcap
-    COMMAND sudo setcap cap_sys_ptrace+ep "$<TARGET_FILE:pwait>"
+    COMMAND sudo setcap "cap_sys_ptrace+p cap_net_admin+p" "$<TARGET_FILE:pwait>"
 )
 set_tests_properties(pwait-setcap PROPERTIES FIXTURES_SETUP pwait-setcap-fixture)
 
