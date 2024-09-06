@@ -72,11 +72,6 @@ test_pwait_exit_code() {
 }
 
 
-test_pwait_exit_code 0
-test_pwait_exit_code 1
-test_pwait_exit_code 128
-
-
 # Test that the target process does not exist after pwait exits.
 test_target_does_not_exist_after_pwait_exit() {
     local delay="2s" code="0" test_name="${FUNCNAME[0]}"
@@ -90,9 +85,6 @@ test_target_does_not_exist_after_pwait_exit() {
 
     print_test_footer
 }
-
-
-test_target_does_not_exist_after_pwait_exit
 
 
 # Start a process that waits for a specified amount of time and then ensures
@@ -126,7 +118,16 @@ test_pwait_and_target_exit_times() {
 }
 
 
-test_pwait_and_target_exit_times 0.1s
-test_pwait_and_target_exit_times 1s
-test_pwait_and_target_exit_times 2s
-test_pwait_and_target_exit_times 5s
+run_all_tests() {
+    test_pwait_exit_code 0
+    test_pwait_exit_code 1
+    test_pwait_exit_code 128
+    test_target_does_not_exist_after_pwait_exit
+    test_pwait_and_target_exit_times 0.1s
+    test_pwait_and_target_exit_times 1s
+    test_pwait_and_target_exit_times 2s
+    test_pwait_and_target_exit_times 5s
+}
+
+
+run_all_tests
