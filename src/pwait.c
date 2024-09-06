@@ -72,7 +72,8 @@ int main(const int argc, char* const* argv) {
         return EX_NOINPUT;
     }
 
-    status = wait_using_ptrace(pid);
+//     status = wait_using_ptrace(pid);
+    status = wait_using_netlink(pid);
 
     closelog();
     return status;

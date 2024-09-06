@@ -27,3 +27,4 @@
 int acquire_capabilities(size_t n, const cap_value_t* capabilities_to_acquire);
 
 int wait_using_ptrace(pid_t pid);
+int wait_using_netlink(pid_t pid);
