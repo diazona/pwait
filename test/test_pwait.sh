@@ -22,9 +22,9 @@ start_sleep_and_exit() {
 # and then store pwait's exit code in the variable pwait_exit_code.
 run_pwait() {
     local pid="${1?:Missing PID}"
-    printf "Invoking %s on target pid %d\n" "$PWAIT" "$pid"
+    printf "Invoking %s %s on target pid %d\n" "$PWAIT" "${pwait_options[*]}" "$pid"
     set +e
-    "$PWAIT" "$pid"
+    "$PWAIT" "${pwait_options[@]}" "$pid"
     pwait_exit_code="$?"
     set -e
 }
@@ -130,4 +130,8 @@ run_all_tests() {
 }
 
 
+pwait_options=()
+if [[ -n "${PWAIT_METHOD:-}" ]]; then
+    pwait_options=("--method=${PWAIT_METHOD}")
+fi
 run_all_tests
