@@ -27,19 +27,29 @@ Of course, pwait returns its own error codes to indicate whether something goes
 wrong. To tell whether a nonzero exit code came from pwait itself or the
 program being waited for, look at the log output.
 
-pwait uses the ptrace system call, which means there are some prerequisites
-for you to use it:
+pwait uses one of two methods to collect the exit code of its target process:
+
+- the ptrace system call, which attaches to the target process like a debugger
+- the netlink connector, which registers with the kernel to be notified every
+  time a process exits (or forks, execs, etc.) and ignores all such notifications
+  except for the process you ask it to watch
+
+Needless to say, this is fairly low-level system stuff, so it comes with a few
+caveats:
 
 - It probably only works on Linux, not other UNIX-like OS's. (Support for other
   OS's could be implemented, in principle.)
 - You have to have capability support enabled in the kernel and the capability
-  manipulation shell utility `setcap` installed on the system
+  manipulation shell utility `setcap` installed on the system (unless you run
+  pwait as root)
 - It must be installed on a filesystem which supports extended attributes, so
-  that you can add cap_sys_ptrace to the permitted capabilities list with setcap
-- It only works on processes that you can send signals to. In particular, you
-  can't pwait for a process running as root (or setuid/setgid) unless you run
-  pwait as root. You also can't pwait for a process that is already being traced
-  (such as one being run in a debugger).
+  that you can add cap_sys_ptrace and/or cap_net_admin to the permitted
+  capabilities list with setcap (again, unless you run it as root)
+- The ptrace method only works on processes that you can send signals to. In
+  particular, you can't pwait for a process running as root (or setuid/setgid)
+  unless you run pwait as root. You also can't pwait for a process that is
+  already being traced (such as one being run in a debugger). The netlink method
+  doesn't suffer from these particular limitations, so it's the default.
 
 If this utility turns out to be useful, a future addition might be a
 polling mode which allows one to get around these difficulties.
