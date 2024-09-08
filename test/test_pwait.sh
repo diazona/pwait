@@ -138,8 +138,23 @@ run_all_tests() {
 }
 
 
+run_poll_tests() {
+    pwait_options=("--method=poll")
+    test_target_does_not_exist_after_pwait_exit
+    for delay in 1 2 5; do
+        pwait_options=("--method=poll" "--delay=$delay")
+        test_pwait_and_target_exit_times 10s "${delay}"
+    done
+}
+
+
 pwait_options=()
-if [[ -n "${PWAIT_METHOD:-}" ]]; then
-    pwait_options=("--method=${PWAIT_METHOD}")
-fi
-run_all_tests
+case "${PWAIT_METHOD:-}" in
+    poll)
+        run_poll_tests
+    ;;
+    *)
+        pwait_options=("--method=${PWAIT_METHOD}")
+        run_all_tests
+    ;;
+esac

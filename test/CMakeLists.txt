@@ -19,3 +19,9 @@ add_test(
 )
 set_tests_properties(test-pwait-ptrace PROPERTIES ENVIRONMENT "PWAIT=$<TARGET_FILE:pwait>;PWAIT_METHOD=ptrace")
 set_tests_properties(test-pwait-ptrace PROPERTIES FIXTURES_REQUIRED pwait-setcap-fixture)
+
+add_test(
+    NAME test-pwait-poll
+    COMMAND "${CMAKE_CURRENT_LIST_DIR}/test_pwait.sh"
+)
+set_tests_properties(test-pwait-poll PROPERTIES ENVIRONMENT "PWAIT=$<TARGET_FILE:pwait>;PWAIT_METHOD=poll")
