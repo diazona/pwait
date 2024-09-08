@@ -102,7 +102,7 @@ start_sleep_and_touch() {
 
 # Test that pwait and its target process exit at roughly the same time.
 test_pwait_and_target_exit_times() {
-    local delay="$1" code="0" test_name tmpdir sleep_time pwait_time
+    local delay="$1" threshold="${2:-0}" code="0" test_name tmpdir sleep_time pwait_time
     test_name="${FUNCNAME[0]}_$delay"
     print_test_header
 
@@ -112,7 +112,15 @@ test_pwait_and_target_exit_times() {
     background_pid="$!"
     /usr/bin/time --format "%e" "$PWAIT" "$background_pid" >"$tmpdir/pwait-time.txt"
 
-    assert "cmp '$tmpdir/sleep-time.txt' '$tmpdir/pwait-time.txt'" "pwait and target process finished at different times"
+    sleep_time="$(<"$tmpdir/sleep-time.txt")"
+    pwait_time="$(<"$tmpdir/pwait-time.txt")"
+    declare -i delay
+    if (( sleep_time > pwait_time )); then
+        delay="sleep_time - pwait_time"
+    else
+        delay="pwait_time - sleep_time"
+    fi
+    assert "(( ($delay) <= threshold ))" "pwait and target process finished at different times"
 
     print_test_footer
 }
