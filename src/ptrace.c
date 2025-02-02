@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <sysexits.h>
 #include <syslog.h>
+#include <unistd.h>
 #include "pwait.h"
 
 /* When the tracee is about to exit, waitpid returns a status
