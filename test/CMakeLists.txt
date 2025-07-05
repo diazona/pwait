@@ -25,3 +25,9 @@ add_test(
     COMMAND "${CMAKE_CURRENT_LIST_DIR}/test_pwait.sh"
 )
 set_tests_properties(test-pwait-poll PROPERTIES ENVIRONMENT "PWAIT=$<TARGET_FILE:pwait>;PWAIT_METHOD=poll;PWAIT_SKIP_EXIT_CODE_TESTS=1")
+
+add_test(
+    NAME test-pwait-pidfd
+    COMMAND "${CMAKE_CURRENT_LIST_DIR}/test_pwait.sh"
+)
+set_tests_properties(test-pwait-pidfd PROPERTIES ENVIRONMENT "PWAIT=$<TARGET_FILE:pwait>;PWAIT_METHOD=pidfd;PWAIT_SKIP_EXIT_CODE_TESTS=1")
