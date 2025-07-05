@@ -45,7 +45,7 @@ static void help(const char* name) {
     printf("  -d, --delay=SECONDS  set the polling frequency when --method=poll\n");
     printf("  -h, --help           print this help message and exit\n");
     printf("  -m, --method=METHOD  use METHOD to wait for the process\n");
-    printf("                       METHOD is one of 'netlink' (default), 'ptrace', or 'poll'\n");
+    printf("                       METHOD is one of 'netlink' (default), 'ptrace', 'poll', or 'pidfd'\n");
     printf("  -v, --verbose        print diagnostic output to stderr\n");
 #else
     printf("  -h    print this help message and exit\n");
@@ -100,6 +100,9 @@ int main(const int argc, char* const* argv) {
                 }
                 else if (strncmp(optarg, "poll", 5) == 0) {
                     wait_function = wait_using_polling;
+                }
+                else if (strncmp(optarg, "pidfd", 6) == 0) {
+                    wait_function = wait_using_pidfd;
                 }
                 else {
                     wait_function = NULL;

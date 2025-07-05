@@ -127,9 +127,11 @@ test_pwait_and_target_exit_times() {
 
 
 run_all_tests() {
-    test_pwait_exit_code 0
-    test_pwait_exit_code 1
-    test_pwait_exit_code 128
+    if [[ -z "${PWAIT_SKIP_EXIT_CODE_TESTS:-}" ]]; then
+        test_pwait_exit_code 0
+        test_pwait_exit_code 1
+        test_pwait_exit_code 128
+    fi
     test_target_does_not_exist_after_pwait_exit
     test_pwait_and_target_exit_times 0.1s
     test_pwait_and_target_exit_times 1s
@@ -138,9 +140,7 @@ run_all_tests() {
 }
 
 
-run_poll_tests() {
-    pwait_options=("--method=poll")
-    test_target_does_not_exist_after_pwait_exit
+run_poll_delay_tests() {
     for delay in 1 2 5; do
         pwait_options=("--method=poll" "--delay=$delay")
         test_pwait_and_target_exit_times 10s "${delay}"
@@ -148,13 +148,9 @@ run_poll_tests() {
 }
 
 
-pwait_options=()
-case "${PWAIT_METHOD:-}" in
-    poll)
-        run_poll_tests
-    ;;
-    *)
-        pwait_options=("--method=${PWAIT_METHOD}")
-        run_all_tests
-    ;;
-esac
+pwait_options=("--method=${PWAIT_METHOD}")
+run_all_tests
+
+if [[ "${PWAIT_METHOD:-}" == "poll" ]]; then
+    run_poll_delay_tests
+fi
